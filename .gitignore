@@ -1,0 +1,6 @@
+deprecated/
+assets/
+figures/
+__pycache__/
+dist/
+*-info
