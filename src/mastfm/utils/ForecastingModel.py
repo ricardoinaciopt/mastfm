@@ -9,8 +9,7 @@ from copy import deepcopy
 class ForecastingModel:
     """
     Class for training and forecasting using a specified model or list of models with hyperparameter tuning.
-    Model tuning is done using AutoModel from Nixtla and optuna.
-    It takes sklearn-compatible regressors, and wraps them around an AutoModel object to find the best hyperparameters and make forecasts. if necessary, an interval of confidence can be specified.
+    It takes sklearn-compatible regressors to make forecasts. An interval of confidence can be specified.
     """
 
     def __init__(
@@ -46,14 +45,13 @@ class ForecastingModel:
             "linearregression",
             "elasticnet",
             "randomforest",
-            "catboost",
         ]
 
         self.fit()
 
     def fit(self):
         """
-        Fits the forecasting model and performs hyperparameter tuning.
+        Fits the forecasting model.
         """
 
         fit_kwargs = {
@@ -81,7 +79,7 @@ class ForecastingModel:
 
     def forecast(self):
         """
-        Generates forecast using the trained AutoMLForecast object.
+        Generates forecasts using the fitted model.
         """
         if not self.level:
             raise ValueError("'level' must be defined to compute prediction intervals.")

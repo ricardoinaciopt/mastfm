@@ -118,6 +118,8 @@ class MASTFM:
         self.__train_features = None
         self.__model_predictions = None
         self.__large_certainty_df = None
+        self.hubris_ids = None
+        self.hubris_df = None
         self.large_certainty_ids = None
         self.augmentation_method = augmentation_method or "ADASYN"
         self.oversamplers = ["SMOTE", "ADASYN", "BorderlineSMOTE", "SVMSMOTE"]
@@ -490,6 +492,14 @@ class MASTFM:
             ]
             self.large_certainty_ids = self.__large_certainty_df["unique_id"].unique()
 
+            # also define hubris as the intersection of large error and large certainty
+            self.hubris_ids = set(self.large_errors_ids).intersection(
+                set(self.large_certainty_ids)
+            )
+            self.__hubris_df = pd.merge(
+                self.__large_errors_df, self.__large_certainty_df, on="unique_id"
+            )
+
             return self.large_certainty_ids
         raise ValueError("'quantile' must be defined.")
 
@@ -590,6 +600,14 @@ class MASTFM:
         if df:
             return self.__large_errors_df
 
+    def show_large_certainty_ids(self, df=False):
+        """
+        Displays the unique IDs of the timeseries with large certainty.
+        """
+        print(list(self.large_certainty_ids))
+        if df:
+            return self.__large_certainty_df
+
     def show_large_uncertainty_ids(self, df=False):
         """
         Displays the unique IDs of the timeseries with large uncertainty.
@@ -598,13 +616,13 @@ class MASTFM:
         if df:
             return self.__large_uncertainty_df
 
-    def show_large_certainty_ids(self, df=False):
+    def show_hubris_ids(self, df=False):
         """
-        Displays the unique IDs of the timeseries with large certainty.
+        Displays the unique IDs of the timeseries with large errors and large certainty.
         """
-        print(list(self.large_certainty_ids))
+        print(list(self.hubris_ids))
         if df:
-            return self.__large_certainty_df
+            return self.__hubris_df
 
     def plot_stress(self, show=True, save=False):
         """
@@ -615,7 +633,7 @@ class MASTFM:
             - 1: Large Error
             - 2: Large Uncertainty
             - 3: Large Error & Large Uncertainty
-            - 4: Large Error & Low Uncertainty
+            - 4: Hubris
         The method scales the error and uncertainty values to a unit range before plotting.
         """
         conditions = [
@@ -647,7 +665,7 @@ class MASTFM:
             "Large Error",
             "Large Uncertainty",
             "Large Error & Large Uncertainty",
-            "Large Error & Low Uncertainty",
+            "Hubris",
         ]
         shapes = ["o", "o", "o", "o", "*"]
 
