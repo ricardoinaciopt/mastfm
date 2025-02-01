@@ -1,6 +1,6 @@
 # mastfm
 
-![fig](mastfm-header.png)
+![](https://github.com/ricardoinaciopt/mastfm/blob/main/mastfm-header.png?raw=true)
 
 `mastfm` is a package for Meta-learning and data Augmentation for Stress Testing. It provides tools to interpret forecasting models by leveraging meta-learning techniques and various data augmentation methods.
 
@@ -20,6 +20,7 @@ pip install mastfm
 - shap
 - matplotlib
 - imbalanced-learn
+- tsfeatures
 - xgboost
 - lightgbm
 - tqdm

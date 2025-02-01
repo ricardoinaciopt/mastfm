@@ -22,6 +22,7 @@ class MetaModel:
         resampler=None,
         target=None,
         tuning=True,
+        quantile=None,
     ):
         """
         Initializes the MetaModel object.
@@ -30,6 +31,8 @@ class MetaModel:
         self.tuning = tuning
         self.train = train_set
         self.columns_to_drop = columns_to_drop
+        self.target = target
+        self.quantile = quantile
         self.X = None
         self.y = None
         self.resamplers = {
@@ -39,7 +42,6 @@ class MetaModel:
             "BorderlineSMOTE": BorderlineSMOTE(),
         }
         self.classifier = None
-        self.target = target
         self.preprocess_set()
         self.fit_model()
 
@@ -59,9 +61,18 @@ class MetaModel:
             data_to_resample = self.train.copy()
             threshold_mask = self.train[self.target].astype(int)
 
-            resampled_data, err_class = self.resamplers[self.resampler].fit_resample(
-                data_to_resample, threshold_mask
-            )
+            try:
+                resampled_data, err_class = self.resamplers[
+                    self.resampler
+                ].fit_resample(data_to_resample, threshold_mask)
+            except ValueError as e:
+                if "Expected n_neighbors <= n_samples_fit" in str(e):
+                    raise ValueError(
+                        "This definition of stress is too rigid, and there are not enough examples to augment the dataset. "
+                        f"Please relax the stress threshold ('quantile' < {int(self.quantile*100)}), or change the 'augmentation_method'."
+                    )
+                else:
+                    raise e
 
             self.X = resampled_data.drop(
                 [col for col in self.columns_to_drop if col in resampled_data.columns],

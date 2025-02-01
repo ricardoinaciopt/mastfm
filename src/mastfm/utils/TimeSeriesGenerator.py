@@ -26,6 +26,7 @@ class TimeSeriesGenerator:
         min_len=None,
         max_len=None,
         target=None,
+        quantile=None,
     ):
         """
         Initializes the TimeSeriesGenerator with dataset attributes and pre-configures
@@ -37,20 +38,16 @@ class TimeSeriesGenerator:
         self.min_len = min_len
         self.max_len = max_len
         self.target = target
+        self.quantile = quantile
         self.methods = {
             "TSMixup": [
                 TSMixup,
                 TSMixup(max_n_uids=3, min_len=self.min_len, max_len=self.min_len),
             ],
-            "KernelSynth": [
-                KernelSynth,
-                KernelSynth(max_kernels=5, freq=self.frequency, n_obs=self.min_len),
-            ],
             "DBA": [DBA, DBA(max_n_uids=3)],
             "Scaling": [Scaling, Scaling()],
             "MagnitudeWarping": [MagnitudeWarping, MagnitudeWarping()],
             "TimeWarping": [TimeWarping, TimeWarping()],
-            "SeasonalMBB": [SeasonalMBB, SeasonalMBB(seas_period=self.seasonality)],
             "Jittering": [Jittering, Jittering()],
         }
 
@@ -73,10 +70,14 @@ class TimeSeriesGenerator:
         if not method_name or method_name not in self.methods:
             raise ValueError(f"Unknown method_name: {method_name}")
 
-        gen_diff = (
-            self.df[self.target].value_counts().get(0, 0)
-            - self.df[self.target].value_counts().get(1, 0)
-        ) // 10
+        gen_diff = self.df[self.target].value_counts().get(0, 0) - self.df[
+            self.target
+        ].value_counts().get(1, 0)
+        if gen_diff > 100000:
+            gen_diff //= 10
+        if gen_diff > 200000:
+            gen_diff //= 50
+
         if method_name in {"DBA", "TSMixup"}:
             self.df["unique_id"] = self.df["unique_id"].astype("str")
 
@@ -87,15 +88,27 @@ class TimeSeriesGenerator:
         augmented_dfs = []
 
         if "transform" in self.get_class_methods(cls):
-            augmented_df = (
-                method.transform(df, gen_diff)
-                if method_name != "KernelSynth"
-                else method.transform(gen_diff)
-            )
-            augmented_df["unique_id"] = augmented_df["unique_id"].astype(str) + "_SYN"
+            gen_diff //= 60
+            try:
+                augmented_df = method.transform(df, gen_diff)
+                augmented_df["unique_id"] = (
+                    augmented_df["unique_id"].astype(str) + "_SYN"
+                )
+            except ValueError as e:
+                if "Expected n_neighbors <= n_samples_fit" in str(e):
+                    raise ValueError(
+                        "This definition of stress is too rigid, and there are not enough examples to augment the dataset. "
+                        f"Please relax the stress threshold ('quantile' < {int(self.quantile*100)}), or change the 'augmentation_method'."
+                    )
+                else:
+                    raise e
             augmented_dfs.append(augmented_df.copy())
         else:
-            gen_diff //= 1000
+            if gen_diff > 100000:
+                gen_diff //= 10
+            gen_diff //= 100
+            if self.quantile <= 0.9:
+                gen_diff //= 80
             for i in range(gen_diff):
                 augmented_df = method._create_synthetic_ts(df)
                 augmented_df["unique_id"] = (

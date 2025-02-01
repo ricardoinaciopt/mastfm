@@ -94,15 +94,15 @@ class MASTFM:
         if target is not None and target not in [
             "errors",
             "uncertainty",
-            "errors_certainty",
+            "hubris",
         ]:
             raise ValueError(
-                f"Invalid target: {target}. Please choose one of: 'errors', 'uncertainty', or 'errors_certainty'."
+                f"Invalid target: {target}. Please choose one of: 'errors', 'uncertainty', or 'hubris'."
             )
         self.target = {
             "errors": "large_error",
             "uncertainty": "large_uncertainty",
-            "errors_certainty": "le_lc",
+            "hubris": "le_lc",
         }.get(target, "large_error")
         self.error_summary = None
         self.metamodel = None
@@ -241,6 +241,7 @@ class MASTFM:
                 resampler=self.augmentation_method,
                 columns_to_drop=self.cols_to_drop,
                 target=self.target,
+                quantile=self.quantile,
             )
         elif self.augmentation_method in self.generators:
             self.__initialize_generator_metamodel(mm_train, mm_cal)
@@ -289,6 +290,7 @@ class MASTFM:
             min_len=min_len,
             max_len=max_len,
             target=self.target,
+            quantile=self.quantile,
         )
         synthetic_ts_df = augmenter.generate_synthetic_dataset(
             method_name=self.augmentation_method
@@ -303,7 +305,7 @@ class MASTFM:
         features[self.target] = features["unique_id"].apply(
             lambda x: 1 if x in mm_train_stress_ids or "SYN" in x else 0
         )
-        features = self.__balance_large_error(features)
+        features = self.__balance_stress(features)
         features = features.fillna(0)
         self.metamodel = MetaModel(
             train_set=features,
@@ -526,18 +528,20 @@ class MASTFM:
             self.__train_features.fillna(0, inplace=True)
             self.__train_features.set_index("unique_id", inplace=True)
 
-    def __balance_large_error(self, df, prefix="SYN"):
+    def __balance_stress(self, df, prefix="SYN"):
         """
-        Balances the dataset by the large error target variable.
+        Balances the dataset by the target variable.
         """
         df_0 = df[df[self.target] == 0]
         df_1 = df[df[self.target] == 1]
 
         df_1_with_prefix = df_1[df_1["unique_id"].str.contains(prefix, na=False)]
         df_1_without_prefix = df_1[~df_1["unique_id"].str.contains(prefix, na=False)]
-
         if len(df_1_with_prefix) < len(df_0):
-            raise ValueError("Not enough synthetic samples to balance the dataset.")
+            raise ValueError(
+                "Not enough synthetic samples to balance the dataset. "
+                f"Please relax the stress threshold ('quantile' < {int(self.quantile*100)}), or change the 'augmentation_method'."
+            )
         df_1_sampled = df_1_with_prefix.sample(
             n=(len(df_0) - len(df_1_without_prefix)), random_state=42
         )
