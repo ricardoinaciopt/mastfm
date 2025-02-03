@@ -10,7 +10,9 @@ import matplotlib.pyplot as plt
 from tsfeatures import tsfeatures
 from utilsforecast.losses import *
 from utilsforecast.evaluation import evaluate
+from utilsforecast.plotting import plot_series
 from sklearn.preprocessing import StandardScaler
+
 
 from .utils.MetaModel import MetaModel
 from .utils.PrepareDataset import PrepareDataset
@@ -99,6 +101,7 @@ class MASTFM:
             raise ValueError(
                 f"Invalid target: {target}. Please choose one of: 'errors', 'uncertainty', or 'hubris'."
             )
+        self.__target_name = target
         self.target = {
             "errors": "large_error",
             "uncertainty": "large_uncertainty",
@@ -494,9 +497,9 @@ class MASTFM:
             ]
             self.large_certainty_ids = self.__large_certainty_df["unique_id"].unique()
 
-            # also define hubris as the intersection of large error and large certainty
-            self.hubris_ids = set(self.large_errors_ids).intersection(
-                set(self.large_certainty_ids)
+            # also define hubris as the intersection of large errors and large certainty
+            self.hubris_ids = list(
+                set(self.large_errors_ids).intersection(set(self.large_certainty_ids))
             )
             self.__hubris_df = pd.merge(
                 self.__large_errors_df, self.__large_certainty_df, on="unique_id"
@@ -710,3 +713,22 @@ class MASTFM:
         """
         y_min, y_max = np.min(y), np.max(y)
         return (y - y_min) / (y_max - y_min)
+
+    def plot_stress_series(self, stress_type=None):
+        """
+        Plots the stress-inducing time series
+        """
+        if stress_type is None:
+            stress_type = self.__target_name
+
+        stress_ids_map = {
+            "errors": self.large_errors_ids,
+            "uncertainty": self.large_uncertainty_ids,
+            "hubris": self.hubris_ids,
+        }
+        stress_ids = stress_ids_map.get(stress_type)
+        if stress_ids is None:
+            raise ValueError(f"Invalid stress type: {stress_type}")
+
+        fig = plot_series(df=self.train_set, ids=stress_ids, max_ids=100)
+        return fig

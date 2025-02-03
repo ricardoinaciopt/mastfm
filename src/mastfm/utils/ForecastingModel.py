@@ -53,22 +53,17 @@ class ForecastingModel:
         """
         Fits the forecasting model.
         """
-
         fit_kwargs = {
             "df": self.train_set,
             "prediction_intervals": PredictionIntervals(h=self.horizon),
         }
-
         # handle categorical features
-        if self.model_name in self.non_categorical_models:
-            fit_kwargs["static_features"] = ["unique_id"]
         if "enable_categorical" in self.model.__dict__:
             self.model.set_params(enable_categoric=True)
 
         target_transforms = None
         if self.target_differences is not None:
             target_transforms = [(Differences([self.target_differences]))]
-
         self.regressor = MLForecast(
             models=self.model,
             freq=self.frequency,

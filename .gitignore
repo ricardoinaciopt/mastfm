@@ -4,3 +4,5 @@ figures/
 __pycache__/
 dist/
 *-info
+.DS_Store
+dist/
