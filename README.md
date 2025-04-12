@@ -18,6 +18,7 @@ pip install mastfm
 - pandas
 - scikit-learn
 - shap
+- shapiq
 - matplotlib
 - imbalanced-learn
 - tsfeatures
@@ -44,7 +45,7 @@ mast = MASTFM(
     seasonality=12,
     frequency="M",
     horizon=12,
-    level=80,
+    level=90,
     quantile=80,
     augmentation_method="ADASYN",
 )

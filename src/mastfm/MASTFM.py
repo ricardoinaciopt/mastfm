@@ -1,5 +1,6 @@
 import os
 import shap
+import shapiq
 import inspect
 import __main__
 import numpy as np
@@ -119,6 +120,8 @@ class MASTFM:
         self.__features_errors = None
         self.__features_stress = None
         self.__train_features = None
+        self.__feature_names = None
+        self.__features_index = None
         self.__model_predictions = None
         self.__large_certainty_df = None
         self.hubris_ids = None
@@ -143,6 +146,7 @@ class MASTFM:
             "le_lc",
             "class",
         ]
+        self.__shap_values = None
 
     def fit(self, df, val_size=None, target_differences=None):
         if df is None:
@@ -530,6 +534,8 @@ class MASTFM:
             self.__train_features = features
             self.__train_features.fillna(0, inplace=True)
             self.__train_features.set_index("unique_id", inplace=True)
+            self.__feature_names = self.__train_features.columns.to_list()
+            self.__features_index = self.__train_features.index.to_list()
 
     def __balance_stress(self, df, prefix="SYN"):
         """
@@ -562,42 +568,101 @@ class MASTFM:
         Applies the metamodel on the predictions.
         """
         self.__evaluate_and_extract_features(X=self.train_set, is_dev=False)
-
-    def explanations(self, top_n=10, show=True, save=False):
-        """
-        Computes explanations using SHAP values for the top N features.
-        """
         explainer = shap.Explainer(self.metamodel.classifier)
-        shap_values = explainer(self.__train_features)
+        self.__shap_values = explainer(self.__train_features)
+
+    def visual_explanations(self, top_n=10, show=True, save=False, relationships=False):
+        """
+        Produces visual explanations using SHAP values for the top N features.
+        If shapiq is True, uses the shapiq package for interaction values.
+        """
+        if self.__shap_values is None:
+            raise ValueError("SHAP values not available")
 
         if save and not os.path.exists("figures"):
             os.makedirs("figures")
 
-        plt.figure(figsize=(10, 6))
-        shap.summary_plot(
-            shap_values,
-            self.__train_features,
-            plot_type="bar",
-            max_display=top_n,
-            show=False,
-        )
-        plt.tight_layout()
-        if save:
-            plt.savefig("figures/shap_summary_bar.pdf", bbox_inches="tight", dpi=500)
-        if show:
-            plt.show()
-        plt.close()
+        if relationships:
 
-        plt.figure(figsize=(10, 6))
-        shap.summary_plot(
-            shap_values, self.__train_features, max_display=top_n, show=False
-        )
-        plt.tight_layout()
-        if save:
-            plt.savefig("figures/shap_summary.pdf", bbox_inches="tight", dpi=500)
-        if show:
-            plt.show()
-        plt.close()
+            explainer = shapiq.TreeExplainer(
+                model=self.metamodel.classifier, index="k-SII", min_order=1, max_order=3
+            )
+            interaction_values = explainer.explain(self.__train_features.iloc[100])
+
+            plt.figure(figsize=(10, 16))
+            shapiq.network_plot(
+                first_order_values=interaction_values.get_n_order_values(1),
+                second_order_values=interaction_values.get_n_order_values(2),
+                feature_names=self.__train_features.columns,
+            )
+            plt.tight_layout()
+            if save:
+                plt.savefig(
+                    "figures/shapiq_network_plot.pdf", bbox_inches="tight", dpi=500
+                )
+            if show:
+                plt.show()
+            plt.close()
+        else:
+            plt.figure(figsize=(10, 6))
+            shap.summary_plot(
+                self.__shap_values,
+                self.__train_features,
+                plot_type="bar",
+                max_display=top_n,
+                show=False,
+            )
+            plt.tight_layout()
+            if save:
+                plt.savefig(
+                    "figures/shap_summary_bar.pdf", bbox_inches="tight", dpi=500
+                )
+            if show:
+                plt.show()
+            plt.close()
+
+            plt.figure(figsize=(10, 6))
+            shap.summary_plot(
+                self.__shap_values, self.__train_features, max_display=top_n, show=False
+            )
+            plt.tight_layout()
+            if save:
+                plt.savefig("figures/shap_summary.pdf", bbox_inches="tight", dpi=500)
+            if show:
+                plt.show()
+            plt.close()
+
+    def textual_explanations(self, unique_id=None):
+        if self.__shap_values is None:
+            raise ValueError("SHAP values not available")
+        if unique_id is None:
+            sample_shap_values = self.__shap_values.values.mean(axis=0)
+            sample_base_value = self.__shap_values.base_values.mean()
+            text = f"When predicting the outcome on average across all time series, the base value is {sample_base_value:.2f}, which is the average model output when no feature is considered. Lets assess how each feature contributes to shift the model from the base value: \n"
+        else:
+            if unique_id not in self.__features_index:
+                raise ValueError(
+                    f"Invalid identifier: {unique_id}. Please provide a valid 'unique_id'."
+                )
+            sample_index = self.__features_index.index(unique_id)
+            sample_shap_values = self.__shap_values.values[sample_index]
+            sample_base_value = self.__shap_values.base_values[sample_index]
+            text = f'When predicting the outcome for time series "{unique_id}", the base value is {sample_base_value:.2f}, which is the average model output when no feature is considered. Lets assess how each feature contributes to shift the model from the base value: \n'
+        feature_contributions = []
+        for feature_index, feature_name in enumerate(self.__feature_names):
+            shap_value = round(sample_shap_values[feature_index], 2)
+            feature_contributions.append((feature_name, shap_value))
+
+        feature_contributions.sort(key=lambda x: x[1], reverse=True)
+
+        for feature_name, shap_value in feature_contributions:
+            if shap_value > 0:
+                text += f"\tThe feature '{feature_name}' contributes positively by {shap_value:.2f}, indicating that it contributes to stress. \n"
+            elif shap_value < 0:
+                text += f"\tThe feature '{feature_name}' contributes negatively by {abs(shap_value):.2f}, indicating that it inhibits stress. \n"
+            else:
+                text += f"\tThe feature '{feature_name}' has a negligible impact on stress. \n"
+        print(text)
 
     def show_large_errors_ids(self, df=False):
         """
@@ -714,7 +779,7 @@ class MASTFM:
         y_min, y_max = np.min(y), np.max(y)
         return (y - y_min) / (y_max - y_min)
 
-    def plot_stress_series(self, stress_type=None):
+    def plot_stress_series(self, stress_type=None, max_series=100):
         """
         Plots the stress-inducing time series
         """
@@ -730,5 +795,5 @@ class MASTFM:
         if stress_ids is None:
             raise ValueError(f"Invalid stress type: {stress_type}")
 
-        fig = plot_series(df=self.train_set, ids=stress_ids, max_ids=100)
+        fig = plot_series(df=self.train_set, ids=stress_ids, max_ids=max_series)
         return fig
